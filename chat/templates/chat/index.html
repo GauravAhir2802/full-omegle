@@ -1,0 +1,86 @@
+<!-- chat/templates/chat/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+        .container {
+            text-align: center;
+        }
+        .btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .connecting-message {
+            display: none; /* Hidden by default */
+            margin-top: 20px;
+            font-size: 18px;
+            color: #555;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to Chat App</h1>
+        <button class="btn" id="video-btn">Start Video Chat</button>
+        <button class="btn" id="chat-btn">Start Text Chat</button>
+        <div class="connecting-message" id="connecting-message">
+            <div class="loader"></div>
+            Connecting...
+        </div>
+    </div>
+
+    <script>
+        // Handle button clicks
+        document.getElementById('video-btn').onclick = function() {
+            showConnectingMessage();
+            window.location.href = "{% url 'create_room' %}?mode=video";
+        };
+
+        document.getElementById('chat-btn').onclick = function() {
+            showConnectingMessage();
+            window.location.href = "{% url 'create_room' %}?mode=chat";
+        };
+
+        function showConnectingMessage() {
+            document.getElementById('connecting-message').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

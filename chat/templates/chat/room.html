@@ -1,0 +1,215 @@
+<!-- chat/templates/chat/room.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% if mode == 'video' %}Video Chat{% else %}Text Chat{% endif %}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+        #video-container {
+            display: {% if mode == 'video' %}flex{% else %}none{% endif %};
+            justify-content: space-around;
+            width: 80%;
+            margin: 20px auto;
+        }
+        video {
+            width: 45%;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        #chat {
+            width: 80%;
+            height: 200px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow-y: scroll;
+            padding: 10px;
+            background-color: #fff;
+            margin: 20px auto;
+        }
+        #message-input {
+            width: 80%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin: 10px auto;
+            display: block;
+        }
+        .connecting-message {
+            display: block; /* Visible by default */
+            margin-top: 20px;
+            font-size: 18px;
+            color: #555;
+        }
+        .connected-message {
+            display: none; /* Hidden by default */
+            margin-top: 20px;
+            font-size: 18px;
+            color: green;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="connecting-message" id="connecting-message">
+        <div class="loader"></div>
+        Connecting...
+    </div>
+    <div class="connected-message" id="connected-message">
+        Connected!
+    </div>
+
+    <div id="video-container">
+        <video id="local-video" autoplay></video>
+        <video id="remote-video" autoplay></video>
+    </div>
+    <div id="chat"></div>
+    <input id="message-input" type="text" placeholder="Type your message here...">
+
+    <script>
+        // Declare the chatSocket variable at the top of the script
+        let chatSocket;
+
+        // Initialize the WebSocket connection
+        function connectWebSocket() {
+            const roomName = "{{ room_name }}";
+            chatSocket = new WebSocket(
+                'ws://' + window.location.host + '/ws/chat/' + roomName + '/'
+            );
+
+            // WebSocket event handlers
+            chatSocket.onopen = function() {
+                console.log('WebSocket connection established.');
+                document.getElementById('connecting-message').style.display = 'none';
+                document.getElementById('connected-message').style.display = 'block';
+            };
+
+            chatSocket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+
+            chatSocket.onclose = function() {
+                console.warn('WebSocket connection closed. Reconnecting...');
+                setTimeout(connectWebSocket, 3000);  // Reconnect after 3 seconds
+            };
+
+            chatSocket.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                console.log('Received data:', data);
+
+                if (data.type === 'offer') {
+                    // Handle incoming offer
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
+                        .then(() => peerConnection.createAnswer())
+                        .then(answer => peerConnection.setLocalDescription(answer))
+                        .then(() => {
+                            chatSocket.send(JSON.stringify({
+                                'type': 'answer',
+                                'answer': peerConnection.localDescription
+                            }));
+                        });
+                } else if (data.type === 'answer') {
+                    // Handle incoming answer
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                } else if (data.type === 'ice_candidate') {
+                    // Handle incoming ICE candidate
+                    peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } else if (data.message) {
+                    // Handle chat messages
+                    document.querySelector('#chat').innerHTML += ('<div>' + data.message + '</div>');
+                }
+            };
+        }
+
+        // Call the function to initialize the WebSocket connection
+        connectWebSocket();
+
+        // WebRTC configuration
+        const configuration = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        let localStream;
+        let peerConnection;
+
+        // Initialize WebRTC only if mode is video
+        if (mode === 'video') {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    localVideo.srcObject = stream;
+                    localStream = stream;
+
+                    // Create peer connection
+                    peerConnection = new RTCPeerConnection(configuration);
+
+                    // Add local stream to peer connection
+                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                    // Handle remote stream
+                    peerConnection.ontrack = event => {
+                        remoteVideo.srcObject = event.streams[0];
+                    };
+
+                    // Handle ICE candidates
+                    peerConnection.onicecandidate = event => {
+                        if (event.candidate) {
+                            chatSocket.send(JSON.stringify({
+                                'type': 'ice_candidate',
+                                'candidate': event.candidate
+                            }));
+                        }
+                    };
+
+                    // Send offer to the other user
+                    peerConnection.createOffer()
+                        .then(offer => peerConnection.setLocalDescription(offer))
+                        .then(() => {
+                            chatSocket.send(JSON.stringify({
+                                'type': 'offer',
+                                'offer': peerConnection.localDescription
+                            }));
+                        });
+                })
+                .catch(error => {
+                    console.error('Error accessing media devices:', error);
+                });
+        }
+
+        // Send chat messages
+        document.querySelector('#message-input').onkeyup = function(e) {
+            if (e.keyCode === 13) {  // Enter key
+                const message = e.target.value;
+                if (chatSocket.readyState === WebSocket.OPEN) {
+                    chatSocket.send(JSON.stringify({
+                        'message': message
+                    }));
+                } else {
+                    console.error('WebSocket is not open.');
+                }
+                e.target.value = '';
+            }
+        };
+    </script>
+</body>
+</html>
